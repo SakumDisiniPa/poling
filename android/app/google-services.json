@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "176991952395",
+    "firebase_url": "https://poling-pplgc-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "poling-pplgc",
+    "storage_bucket": "poling-pplgc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:176991952395:android:a3fb6e255ac084d895f10e",
+        "android_client_info": {
+          "package_name": "com.example.poling"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAe9gT9apYqvWZ_aSERzJevcwnkG7FW9E4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
