@@ -90,4 +90,5 @@ class DefaultFirebaseOptions {
     storageBucket: 'poling-pplgc.firebasestorage.app',
     measurementId: 'G-HK2D8ZFV7P',
   );
+
 }

@@ -10,8 +10,12 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  firebase_core: ^4.0.0 
-  cupertino_icons: ^1.0.8
+  cupertino_icons: ^1.0.2
+  firebase_core: ^2.20.0 # Update ke versi 2.x.x terbaru
+  firebase_auth: ^4.19.0 # Update ke versi 4.x.x terbaru
+  cloud_firestore: ^4.17.0 # Update ke versi 4.x.x terbaru
+  firebase_database: ^10.2.0
+  intl: ^0.20.0
 
 dev_dependencies:
   flutter_test:
@@ -22,3 +26,9 @@ flutter:
   uses-material-design: true
   assets:
     - assets/logo.png
+  fonts:
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Regular.ttf
+        - asset: assets/fonts/Poppins-Italic.ttf
+          style: italic

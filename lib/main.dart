@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'login_page.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  print("🔥 Firebase initialized");
   runApp(const MyApp());
 }
 
@@ -30,7 +37,6 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    // Tunggu 3 detik lalu pindah ke halaman login
     Timer(const Duration(seconds: 3), () {
       Navigator.pushReplacement(
         context,
@@ -45,31 +51,47 @@ class _SplashScreenState extends State<SplashScreen> {
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF2196F3), Color(0xFF9C27B0)], // Biru ke ungu
+            colors: [Color(0xFF673AB7), Color(0xFF9C27B0)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
         ),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Image.asset(
-                'assets/logo.png',
-                width: 150,
-                height: 150,
+        child: Stack(
+          children: [
+            // Logo di tengah
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Image.asset(
+                    'assets/logo.png',
+                    width: 150,
+                    height: 150,
+                    filterQuality: FilterQuality.high,
+                  ),
+                ],
               ),
-              const SizedBox(height: 20),
-              const Text(
-                'from sakum',
-                style: TextStyle(
-                  fontSize: 18,
-                  color: Colors.white70,
-                  fontStyle: FontStyle.italic,
+            ),
+            
+            // Teks "from sakum" di bagian bawah
+            Positioned(
+              bottom: 40, // Jarak dari bawah (bisa disesuaikan)
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Text(
+                  'from sakum',
+                  style: TextStyle(
+                    fontSize: 18,
+                    color: Colors.white.withOpacity(0.8),
+                    fontFamily: 'Poppins', // Gunakan font custom
+                    fontStyle: FontStyle.italic,
+                    letterSpacing: 1.2,
+                  ),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
