@@ -15,6 +15,9 @@ class _CreatePollPageState extends State<CreatePollPage> {
   final _formKey = GlobalKey<FormState>(); // Key untuk validasi form
   bool _isLoading = false;
 
+  TimeOfDay? _startTime; // Waktu mulai polling
+  TimeOfDay? _endTime;   // Waktu berakhir polling
+
   @override
   void initState() {
     super.initState();
@@ -47,10 +50,36 @@ class _CreatePollPageState extends State<CreatePollPage> {
     });
   }
 
+  // Fungsi untuk memilih waktu mulai
+  Future<void> _selectStartTime(BuildContext context) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: _startTime ?? TimeOfDay.now(),
+    );
+    if (picked != null && picked != _startTime) {
+      setState(() {
+        _startTime = picked;
+      });
+    }
+  }
+
+  // Fungsi untuk memilih waktu berakhir
+  Future<void> _selectEndTime(BuildContext context) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: _endTime ?? TimeOfDay.now(),
+    );
+    if (picked != null && picked != _endTime) {
+      setState(() {
+        _endTime = picked;
+      });
+    }
+  }
+
   // Fungsi untuk membuat polling dan menyimpannya ke Realtime Database
   Future<void> _createPoll() async {
     if (!_formKey.currentState!.validate()) {
-      return;
+      return; // Jika form tidak valid, berhenti
     }
 
     // Pastikan ada minimal 2 opsi
@@ -66,8 +95,25 @@ class _CreatePollPageState extends State<CreatePollPage> {
       return;
     }
 
+    // Validasi waktu
+    if (_startTime == null || _endTime == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Waktu mulai dan berakhir polling wajib diisi.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Konversi TimeOfDay ke format yang bisa disimpan (misal: "19:00")
+    String startTimeString = '${_startTime!.hour.toString().padLeft(2, '0')}:${_startTime!.minute.toString().padLeft(2, '0')}';
+    String endTimeString = '${_endTime!.hour.toString().padLeft(2, '0')}:${_endTime!.minute.toString().padLeft(2, '0')}';
+
     setState(() {
-      _isLoading = true;
+      _isLoading = true; // Tampilkan loading
     });
 
     try {
@@ -91,7 +137,9 @@ class _CreatePollPageState extends State<CreatePollPage> {
       await pollsRef.push().set({
         'title': pollTitle,
         'createdBy': user.uid, // UID admin yang membuat polling
-        'createdAt': ServerValue.timestamp, // Timestamp dari server Firebase
+        'createdAt': ServerValue.timestamp, // Timestamp kapan user dibuat
+        'startTime': startTimeString, // Simpan waktu mulai
+        'endTime': endTimeString,     // Simpan waktu berakhir
         'options': {
           for (int i = 0; i < options.length; i++)
             'option_${i + 1}': { // Contoh: option_1, option_2
@@ -117,6 +165,8 @@ class _CreatePollPageState extends State<CreatePollPage> {
           _optionControllers.clear();
           _optionControllers.add(TextEditingController()); // Tambah 2 opsi awal lagi
           _optionControllers.add(TextEditingController());
+          _startTime = null; // Reset waktu
+          _endTime = null;   // Reset waktu
         });
       }
     } catch (e) {
@@ -131,7 +181,7 @@ class _CreatePollPageState extends State<CreatePollPage> {
     } finally {
       if (mounted) {
         setState(() {
-          _isLoading = false;
+          _isLoading = false; // Sembunyikan loading
         });
       }
     }
@@ -185,6 +235,77 @@ class _CreatePollPageState extends State<CreatePollPage> {
                   },
                 ),
                 const SizedBox(height: 20),
+                // --- PENGATURAN WAKTU POLLING ---
+                const Text(
+                  'Waktu Polling Aktif',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF673AB7),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => _selectStartTime(context),
+                        child: InputDecorator(
+                          decoration: InputDecoration(
+                            labelText: 'Waktu Mulai',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: const BorderSide(color: Color(0xFF673AB7)),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            suffixIcon: const Icon(Icons.access_time),
+                          ),
+                          child: Text(
+                            _startTime == null
+                                ? 'Pilih Waktu'
+                                : _startTime!.format(context),
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: _startTime == null ? Colors.grey[600] : Colors.black,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => _selectEndTime(context),
+                        child: InputDecorator(
+                          decoration: InputDecoration(
+                            labelText: 'Waktu Berakhir',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: const BorderSide(color: Color(0xFF673AB7)),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            suffixIcon: const Icon(Icons.access_time),
+                          ),
+                          child: Text(
+                            _endTime == null
+                                ? 'Pilih Waktu'
+                                : _endTime!.format(context),
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: _endTime == null ? Colors.grey[600] : Colors.black,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                // --- AKHIR PENGATURAN WAKTU POLLING ---
                 const Text(
                   'Opsi Polling',
                   style: TextStyle(
@@ -196,8 +317,8 @@ class _CreatePollPageState extends State<CreatePollPage> {
                 const SizedBox(height: 10),
                 // List opsi polling yang bisa ditambah/dihapus
                 ListView.builder(
-                  shrinkWrap: true, // Penting agar ListView bisa di dalam SingleChildScrollView
-                  physics: const NeverScrollableScrollPhysics(), // Nonaktifkan scroll ListView
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
                   itemCount: _optionControllers.length,
                   itemBuilder: (context, index) {
                     return Padding(
@@ -225,7 +346,7 @@ class _CreatePollPageState extends State<CreatePollPage> {
                               },
                             ),
                           ),
-                          if (_optionControllers.length > 2) // Izinkan hapus jika lebih dari 2 opsi
+                          if (_optionControllers.length > 2)
                             IconButton(
                               icon: const Icon(Icons.remove_circle, color: Colors.red),
                               onPressed: () => _removeOptionField(index),

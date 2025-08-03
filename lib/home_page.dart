@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Untuk mendapatkan nama user dan menyimpan status vote
-import 'package:firebase_database/firebase_database.dart'; // Untuk menampilkan dan mengupdate polling
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'login_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -12,16 +12,15 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  String? _userName; // Untuk menyimpan nama user
-  final User? currentUser = FirebaseAuth.instance.currentUser; // User yang sedang login
+  String? _userName;
+  final User? currentUser = FirebaseAuth.instance.currentUser;
 
   @override
   void initState() {
     super.initState();
-    _fetchUserName(); // Panggil fungsi untuk mengambil nama user
+    _fetchUserName();
   }
 
-  // Fungsi untuk mengambil nama user dari Firestore
   Future<void> _fetchUserName() async {
     if (currentUser != null) {
       try {
@@ -37,17 +36,16 @@ class _HomePageState extends State<HomePage> {
       } catch (e) {
         print('Error fetching user name: $e');
         setState(() {
-          _userName = 'User'; // Fallback jika gagal mengambil nama
+          _userName = 'User';
         });
       }
     } else {
       setState(() {
-        _userName = 'Tamu'; // Jika tidak ada user login
+        _userName = 'Tamu';
       });
     }
   }
 
-  // Fungsi untuk logout
   Future<void> _logout() async {
     bool? confirmLogout = await showDialog<bool>(
       context: context,
@@ -80,8 +78,41 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  // Fungsi untuk memeriksa apakah polling sedang aktif berdasarkan waktu
+  bool _isPollActive(String startTimeStr, String endTimeStr) {
+    try {
+      final now = DateTime.now();
+      
+      final startParts = startTimeStr.split(':');
+      final int startHour = int.parse(startParts[0]);
+      final int startMinute = int.parse(startParts[1]);
+      
+      final endParts = endTimeStr.split(':');
+      final int endHour = int.parse(endParts[0]);
+      final int endMinute = int.parse(endParts[1]);
+
+      final startTime = DateTime(now.year, now.month, now.day, startHour, startMinute);
+      final endTime = DateTime(now.year, now.month, now.day, endHour, endMinute);
+
+      if (endTime.isBefore(startTime)) {
+        if (now.isAfter(startTime) && now.isBefore(DateTime(now.year, now.month, now.day, 23, 59, 59))) {
+          return true;
+        }
+        if (now.isAfter(DateTime(now.year, now.month, now.day, 0, 0, 0)) && now.isBefore(endTime)) {
+          return true;
+        }
+        return false;
+      } else {
+        return now.isAfter(startTime) && now.isBefore(endTime);
+      }
+    } catch (e) {
+      print('Error parsing poll time: $e');
+      return false;
+    }
+  }
+
   // Fungsi untuk melakukan voting pada polling
-  Future<void> _voteOnPoll(String pollId, String optionKey, String pollTitle, String optionText) async {
+  Future<void> _voteOnPoll(String pollId, String optionKey, String pollTitle, String optionText, String startTimeStr, String endTimeStr) async {
     if (currentUser == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -94,44 +125,59 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    // Referensi ke dokumen user di Firestore untuk menyimpan status vote
-    // Mengubah struktur penyimpanan vote user di subkoleksi
+    // Periksa apakah polling sedang aktif
+    if (!_isPollActive(startTimeStr, endTimeStr)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Polling ini tidak aktif saat ini.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
     DocumentReference userPollVoteRef = FirebaseFirestore.instance
         .collection('user_votes')
         .doc(currentUser!.uid)
-        .collection('polls_voted') // Subkoleksi baru
-        .doc(pollId); // Dokumen untuk setiap polling yang divote
+        .collection('polls_voted')
+        .doc(pollId);
 
     try {
-      // Periksa apakah user sudah memilih polling ini
-      DocumentSnapshot userVoteDoc = await userPollVoteRef.get();
-      if (userVoteDoc.exists) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Anda sudah memilih polling ini.'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-        return; // Hentikan jika sudah memilih
+      // Ambil pilihan user sebelumnya untuk polling ini (jika ada)
+      DocumentSnapshot prevVoteDoc = await userPollVoteRef.get();
+      String? prevOptionKey;
+      if (prevVoteDoc.exists) {
+        prevOptionKey = (prevVoteDoc.data() as Map<String, dynamic>)['optionVoted'] as String?;
       }
 
-      // 1. Update jumlah vote di Realtime Database
-      final DatabaseReference optionRef = FirebaseDatabase.instance
+      // Jika user mengubah pilihan
+      if (prevOptionKey != null && prevOptionKey != optionKey) {
+        // Kurangi vote dari pilihan sebelumnya di Realtime Database
+        final DatabaseReference prevOptionRef = FirebaseDatabase.instance
+            .ref('polls/$pollId/options/$prevOptionKey/votes');
+        final DataSnapshot prevVotesSnapshot = await prevOptionRef.get();
+        int prevVotes = (prevVotesSnapshot.value as int?) ?? 0;
+        if (prevVotes > 0) {
+          await prevOptionRef.set(prevVotes - 1);
+        }
+      }
+
+      // Tambahkan vote ke pilihan baru
+      final DatabaseReference newOptionRef = FirebaseDatabase.instance
           .ref('polls/$pollId/options/$optionKey/votes');
+      final DataSnapshot newVotesSnapshot = await newOptionRef.get();
+      int newVotes = (newVotesSnapshot.value as int?) ?? 0;
+      await newOptionRef.set(newVotes + 1);
 
-      // Ambil nilai saat ini dan increment
-      final DataSnapshot currentVotesSnapshot = await optionRef.get();
-      int currentVotes = (currentVotesSnapshot.value as int?) ?? 0;
-      await optionRef.set(currentVotes + 1); // Langsung set nilai baru
 
-      // 2. Simpan status vote user di Firestore (di subkoleksi)
+      // Simpan/update status vote user di Firestore
       await userPollVoteRef.set({
         'optionVoted': optionKey,
-        'votedAt': FieldValue.serverTimestamp(), // Simpan timestamp
-        'pollTitle': pollTitle, // Simpan judul polling untuk kemudahan
-        'optionText': optionText, // Simpan teks opsi yang dipilih
+        'votedAt': FieldValue.serverTimestamp(), // Update timestamp setiap kali ganti pilihan
+        'pollTitle': pollTitle,
+        'optionText': optionText,
       });
 
       if (mounted) {
@@ -168,7 +214,7 @@ class _HomePageState extends State<HomePage> {
         ),
         backgroundColor: const Color(0xFF673AB7),
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white), // Icon drawer putih
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       drawer: Drawer(
         child: ListView(
@@ -182,7 +228,6 @@ class _HomePageState extends State<HomePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  // Nama user di drawer
                   Text(
                     'Halo, ${_userName ?? 'Loading...'}!',
                     style: const TextStyle(
@@ -219,7 +264,7 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         child: StreamBuilder(
-          stream: FirebaseDatabase.instance.ref('polls').onValue, // Mendengarkan polling
+          stream: FirebaseDatabase.instance.ref('polls').onValue,
           builder: (context, AsyncSnapshot<DatabaseEvent> snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -252,7 +297,17 @@ class _HomePageState extends State<HomePage> {
                   final poll = polls[index];
                   final String pollId = poll['id'];
                   final String title = poll['title'] ?? 'Judul Tidak Tersedia';
+                  final String startTimeStr = poll['startTime'] ?? '00:00';
+                  final String endTimeStr = poll['endTime'] ?? '23:59';
                   final Map<dynamic, dynamic> options = poll['options'] ?? {};
+
+                  bool isActive = _isPollActive(startTimeStr, endTimeStr);
+
+                  // Hitung total votes untuk polling ini
+                  int totalVotes = 0;
+                  options.forEach((key, value) {
+                    totalVotes += (value['votes'] as int?) ?? 0;
+                  });
 
                   return Card(
                     margin: const EdgeInsets.only(bottom: 16.0),
@@ -273,40 +328,62 @@ class _HomePageState extends State<HomePage> {
                               color: Color(0xFF673AB7),
                             ),
                           ),
+                          const SizedBox(height: 5),
+                          Text(
+                            'Status: ${isActive ? 'Aktif' : 'Tidak Aktif'} ($startTimeStr - $endTimeStr)',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: isActive ? Colors.green : Colors.red,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                           const SizedBox(height: 10),
-                          // Menampilkan opsi polling sebagai RadioListTile untuk voting
                           Column(
                             children: options.entries.map((entry) {
                               final String optionKey = entry.key;
                               final String optionText = entry.value['text'] ?? 'Opsi Tidak Tersedia';
+                              final int votesForOption = (entry.value['votes'] as int?) ?? 0;
+
+                              // Hitung persentase
+                              double percentage = totalVotes > 0 ? (votesForOption / totalVotes) * 100 : 0.0;
+                              String percentageStr = percentage.toStringAsFixed(1); // Format 1 angka di belakang koma
 
                               return FutureBuilder<DocumentSnapshot>(
-                                // Mengambil data vote dari subkoleksi
                                 future: FirebaseFirestore.instance.collection('user_votes').doc(currentUser!.uid).collection('polls_voted').doc(pollId).get(),
                                 builder: (context, voteSnapshot) {
                                   String? userVotedOption;
+                                  Timestamp? lastVotedAt;
+
                                   if (voteSnapshot.hasData && voteSnapshot.data!.exists) {
-                                    userVotedOption = (voteSnapshot.data!.data() as Map<String, dynamic>)['optionVoted'] as String?;
+                                    final voteData = voteSnapshot.data!.data() as Map<String, dynamic>;
+                                    userVotedOption = voteData['optionVoted'] as String?;
+                                    lastVotedAt = voteData['votedAt'] as Timestamp?;
                                   }
 
                                   bool hasVoted = userVotedOption != null;
                                   bool isSelected = userVotedOption == optionKey;
 
+                                  String lastVoteInfo = '';
+                                  if (lastVotedAt != null) {
+                                    final DateTime lastVoteDateTime = lastVotedAt.toDate();
+                                    String twoDigits(int n) => n.toString().padLeft(2, '0');
+                                    lastVoteInfo = ' (Terakhir memilih: ${twoDigits(lastVoteDateTime.hour)}:${twoDigits(lastVoteDateTime.minute)})';
+                                  }
+
                                   return RadioListTile<String>(
                                     title: Text(
-                                      optionText,
+                                      '$optionText ${hasVoted ? '($percentageStr%)' : ''} ${isSelected ? lastVoteInfo : ''}', // Tampilkan persentase jika sudah vote
                                       style: TextStyle(
-                                        color: hasVoted && !isSelected ? Colors.grey : Colors.black,
+                                        color: (hasVoted && !isSelected) || !isActive ? Colors.grey : Colors.black,
                                       ),
                                     ),
                                     value: optionKey,
                                     groupValue: hasVoted ? userVotedOption : null,
-                                    onChanged: hasVoted ? null : (String? value) {
+                                    onChanged: isActive ? (String? value) {
                                       if (value != null) {
-                                        // Meneruskan judul dan teks opsi ke _voteOnPoll
-                                        _voteOnPoll(pollId, value, title, optionText);
+                                        _voteOnPoll(pollId, value, title, optionText, startTimeStr, endTimeStr);
                                       }
-                                    },
+                                    } : null,
                                     activeColor: const Color(0xFF673AB7),
                                   );
                                 },
