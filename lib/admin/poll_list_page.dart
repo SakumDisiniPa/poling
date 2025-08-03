@@ -79,6 +79,39 @@ class _PollListPageState extends State<PollListPage> {
     }
   }
 
+  // Fungsi untuk memeriksa apakah polling sedang aktif berdasarkan waktu (sama seperti di HomePage)
+  bool _isPollActive(String startTimeStr, String endTimeStr) {
+    try {
+      final now = DateTime.now();
+      
+      final startParts = startTimeStr.split(':');
+      final int startHour = int.parse(startParts[0]);
+      final int startMinute = int.parse(startParts[1]);
+      
+      final endParts = endTimeStr.split(':');
+      final int endHour = int.parse(endParts[0]);
+      final int endMinute = int.parse(endParts[1]);
+
+      final startTime = DateTime(now.year, now.month, now.day, startHour, startMinute);
+      final endTime = DateTime(now.year, now.month, now.day, endHour, endMinute);
+
+      if (endTime.isBefore(startTime)) { // Polling melintasi tengah malam
+        if (now.isAfter(startTime) && now.isBefore(DateTime(now.year, now.month, now.day, 23, 59, 59))) {
+          return true;
+        }
+        if (now.isAfter(DateTime(now.year, now.month, now.day, 0, 0, 0)) && now.isBefore(endTime)) {
+          return true;
+        }
+        return false;
+      } else { // Polling dalam satu hari
+        return now.isAfter(startTime) && now.isBefore(endTime);
+      }
+    } catch (e) {
+      print('Error parsing poll time: $e');
+      return false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -127,7 +160,11 @@ class _PollListPageState extends State<PollListPage> {
                 final poll = polls[index];
                 final String pollId = poll['id'];
                 final String title = poll['title'] ?? 'Judul Tidak Tersedia';
+                final String startTimeStr = poll['startTime'] ?? '00:00'; // Ambil waktu mulai
+                final String endTimeStr = poll['endTime'] ?? '23:59';     // Ambil waktu berakhir
                 final Map<dynamic, dynamic> options = poll['options'] ?? {};
+
+                bool isActive = _isPollActive(startTimeStr, endTimeStr); // Cek status aktif
 
                 return Card(
                   margin: const EdgeInsets.only(bottom: 16.0),
@@ -148,6 +185,16 @@ class _PollListPageState extends State<PollListPage> {
                             color: Color(0xFF673AB7),
                           ),
                         ),
+                        const SizedBox(height: 5),
+                        // Tampilkan status dan rentang waktu
+                        Text(
+                          'Status: ${isActive ? 'Aktif' : 'Tidak Aktif'} ($startTimeStr - $endTimeStr)',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: isActive ? Colors.green : Colors.red,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                         const SizedBox(height: 10),
                         // Menampilkan opsi polling
                         Column(
@@ -165,10 +212,10 @@ class _PollListPageState extends State<PollListPage> {
                           }).toList(),
                         ),
                         const SizedBox(height: 15),
-                        Row( // Gunakan Row untuk menempatkan tombol bersebelahan
+                        Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
-                            ElevatedButton.icon( // Tombol Detail
+                            ElevatedButton.icon(
                               onPressed: () {
                                 Navigator.push(
                                   context,
@@ -183,14 +230,14 @@ class _PollListPageState extends State<PollListPage> {
                                 style: TextStyle(color: Colors.white),
                               ),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blueAccent, // Warna untuk tombol detail
+                                backgroundColor: Colors.blueAccent,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 10), // Spasi antara tombol
-                            ElevatedButton.icon( // Tombol Edit
+                            const SizedBox(width: 10),
+                            ElevatedButton.icon(
                               onPressed: () {
                                 Navigator.push(
                                   context,
@@ -211,16 +258,16 @@ class _PollListPageState extends State<PollListPage> {
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 10), // Spasi antara tombol
-                            ElevatedButton.icon( // Tombol Hapus
-                              onPressed: _isDeleting ? null : () => _deletePoll(pollId, title), // Panggil fungsi delete
+                            const SizedBox(width: 10),
+                            ElevatedButton.icon(
+                              onPressed: _isDeleting ? null : () => _deletePoll(pollId, title),
                               icon: const Icon(Icons.delete, color: Colors.white),
                               label: const Text(
                                 'Hapus',
                                 style: TextStyle(color: Colors.white),
                               ),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.red, // Warna untuk tombol hapus
+                                backgroundColor: Colors.red,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(8),
                                 ),

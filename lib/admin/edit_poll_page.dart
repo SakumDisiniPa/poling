@@ -17,6 +17,9 @@ class _EditPollPageState extends State<EditPollPage> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
 
+  TimeOfDay? _startTime; // Waktu mulai polling
+  TimeOfDay? _endTime;   // Waktu berakhir polling
+
   @override
   void initState() {
     super.initState();
@@ -33,6 +36,20 @@ class _EditPollPageState extends State<EditPollPage> {
     while (_optionControllers.length < 2) {
       _optionControllers.add(TextEditingController());
     }
+
+    // --- INISIALISASI WAKTU DARI pollData ---
+    String? storedStartTime = widget.pollData['startTime'];
+    String? storedEndTime = widget.pollData['endTime'];
+
+    if (storedStartTime != null && storedStartTime.contains(':')) {
+      List<String> parts = storedStartTime.split(':');
+      _startTime = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+    }
+    if (storedEndTime != null && storedEndTime.contains(':')) {
+      List<String> parts = storedEndTime.split(':');
+      _endTime = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+    }
+    // --- AKHIR INISIALISASI WAKTU ---
   }
 
   @override
@@ -59,6 +76,32 @@ class _EditPollPageState extends State<EditPollPage> {
     });
   }
 
+  // Fungsi untuk memilih waktu mulai
+  Future<void> _selectStartTime(BuildContext context) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: _startTime ?? TimeOfDay.now(),
+    );
+    if (picked != null && picked != _startTime) {
+      setState(() {
+        _startTime = picked;
+      });
+    }
+  }
+
+  // Fungsi untuk memilih waktu berakhir
+  Future<void> _selectEndTime(BuildContext context) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: _endTime ?? TimeOfDay.now(),
+    );
+    if (picked != null && picked != _endTime) {
+      setState(() {
+        _endTime = picked;
+      });
+    }
+  }
+
   // Fungsi untuk mengupdate polling di Realtime Database
   Future<void> _updatePoll() async {
     if (!_formKey.currentState!.validate()) {
@@ -77,6 +120,23 @@ class _EditPollPageState extends State<EditPollPage> {
       return;
     }
 
+    // Validasi waktu
+    if (_startTime == null || _endTime == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Waktu mulai dan berakhir polling wajib diisi.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Konversi TimeOfDay ke format yang bisa disimpan (misal: "19:00")
+    String startTimeString = '${_startTime!.hour.toString().padLeft(2, '0')}:${_startTime!.minute.toString().padLeft(2, '0')}';
+    String endTimeString = '${_endTime!.hour.toString().padLeft(2, '0')}:${_endTime!.minute.toString().padLeft(2, '0')}';
+
     setState(() {
       _isLoading = true;
     });
@@ -91,17 +151,24 @@ class _EditPollPageState extends State<EditPollPage> {
       // Referensi ke dokumen polling spesifik di Realtime Database
       DatabaseReference pollRef = FirebaseDatabase.instance.ref('polls/${widget.pollId}');
 
+      // Siapkan opsi baru dengan mempertahankan vote yang sudah ada
+      Map<String, dynamic> newOptionsData = {};
+      for (int i = 0; i < options.length; i++) {
+        String optionKey = 'option_${i + 1}';
+        // Ambil vote yang sudah ada untuk opsi ini (jika ada)
+        int existingVotes = (widget.pollData['options']?[optionKey]?['votes'] ?? 0);
+        newOptionsData[optionKey] = {
+          'text': options[i],
+          'votes': existingVotes,
+        };
+      }
+
       // Update data polling
       await pollRef.update({
         'title': pollTitle,
-        'options': {
-          for (int i = 0; i < options.length; i++)
-            'option_${i + 1}': {
-              'text': options[i],
-              'votes': (widget.pollData['options']?['option_${i + 1}']?['votes'] ?? 0), // Pertahankan jumlah vote yang sudah ada
-            },
-        },
-        // createdBy dan createdAt tidak diubah saat update
+        'startTime': startTimeString, // Update waktu mulai
+        'endTime': endTimeString,     // Update waktu berakhir
+        'options': newOptionsData,
       });
 
       if (mounted) {
@@ -179,6 +246,77 @@ class _EditPollPageState extends State<EditPollPage> {
                   },
                 ),
                 const SizedBox(height: 20),
+                // --- PENGATURAN WAKTU POLLING ---
+                const Text(
+                  'Waktu Polling Aktif',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF673AB7),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => _selectStartTime(context),
+                        child: InputDecorator(
+                          decoration: InputDecoration(
+                            labelText: 'Waktu Mulai',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: const BorderSide(color: Color(0xFF673AB7)),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            suffixIcon: const Icon(Icons.access_time),
+                          ),
+                          child: Text(
+                            _startTime == null
+                                ? 'Pilih Waktu'
+                                : _startTime!.format(context),
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: _startTime == null ? Colors.grey[600] : Colors.black,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => _selectEndTime(context),
+                        child: InputDecorator(
+                          decoration: InputDecoration(
+                            labelText: 'Waktu Berakhir',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: const BorderSide(color: Color(0xFF673AB7)),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            suffixIcon: const Icon(Icons.access_time),
+                          ),
+                          child: Text(
+                            _endTime == null
+                                ? 'Pilih Waktu'
+                                : _endTime!.format(context),
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: _endTime == null ? Colors.grey[600] : Colors.black,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                // --- AKHIR PENGATURAN WAKTU POLLING ---
                 const Text(
                   'Opsi Polling',
                   style: TextStyle(
