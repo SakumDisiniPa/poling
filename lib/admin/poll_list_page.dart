@@ -12,11 +12,71 @@ class PollListPage extends StatefulWidget {
 
 class _PollListPageState extends State<PollListPage> {
   late DatabaseReference _pollsRef; // Referensi ke node 'polls' di Realtime Database
+  bool _isDeleting = false; // Status loading untuk tombol delete
 
   @override
   void initState() {
     super.initState();
     _pollsRef = FirebaseDatabase.instance.ref('polls'); // Inisialisasi referensi
+  }
+
+  // Fungsi untuk menghapus polling
+  Future<void> _deletePoll(String pollId, String pollTitle) async {
+    // Tampilkan dialog konfirmasi sebelum menghapus
+    bool? confirmDelete = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Konfirmasi Hapus Polling'),
+          content: Text('Apakah Anda yakin ingin menghapus polling "$pollTitle"? Tindakan ini tidak dapat dibatalkan.'),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false), // Batal hapus
+              child: const Text('Batal'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true), // Konfirmasi hapus
+              child: const Text('Hapus', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmDelete == true) {
+      setState(() {
+        _isDeleting = true; // Tampilkan loading
+      });
+
+      try {
+        // Hapus polling dari Realtime Database
+        await _pollsRef.child(pollId).remove();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Polling berhasil dihapus!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Gagal menghapus polling: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isDeleting = false; // Sembunyikan loading
+          });
+        }
+      }
+    }
   }
 
   @override
@@ -141,11 +201,26 @@ class _PollListPageState extends State<PollListPage> {
                               },
                               icon: const Icon(Icons.edit, color: Colors.white),
                               label: const Text(
-                                'Edit', // Ubah teks menjadi 'Edit' agar lebih singkat
+                                'Edit',
                                 style: TextStyle(color: Colors.white),
                               ),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.orange,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10), // Spasi antara tombol
+                            ElevatedButton.icon( // Tombol Hapus
+                              onPressed: _isDeleting ? null : () => _deletePoll(pollId, title), // Panggil fungsi delete
+                              icon: const Icon(Icons.delete, color: Colors.white),
+                              label: const Text(
+                                'Hapus',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red, // Warna untuk tombol hapus
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(8),
                                 ),

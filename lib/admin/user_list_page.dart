@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
+import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth (untuk referensi, meskipun delete Auth di sini terbatas)
 import 'edit_user_page.dart'; // Import halaman edit user
 
 class UserListPage extends StatefulWidget {
@@ -10,6 +11,75 @@ class UserListPage extends StatefulWidget {
 }
 
 class _UserListPageState extends State<UserListPage> {
+  bool _isDeleting = false; // Status loading untuk tombol delete
+
+  // Fungsi untuk menghapus user
+  Future<void> _deleteUser(String userId, String userName) async {
+    // Tampilkan dialog konfirmasi sebelum menghapus
+    bool? confirmDelete = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Konfirmasi Hapus User'),
+          content: Text('Apakah Anda yakin ingin menghapus user "$userName"? Tindakan ini tidak dapat dibatalkan.'),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false), // Batal hapus
+              child: const Text('Batal'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true), // Konfirmasi hapus
+              child: const Text('Hapus', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmDelete == true) {
+      setState(() {
+        _isDeleting = true; // Tampilkan loading
+      });
+
+      try {
+        // Hapus dokumen user dari Firestore
+        await FirebaseFirestore.instance.collection('users').doc(userId).delete();
+
+        // Catatan Penting:
+        // Menghapus user dari Firebase Authentication (akun login)
+        // TIDAK BISA langsung dilakukan dari aplikasi client-side untuk user lain.
+        // Hanya user itu sendiri yang bisa menghapus akunnya sendiri dari client-side.
+        // Untuk admin menghapus akun user lain, kamu perlu menggunakan Firebase Admin SDK
+        // yang berjalan di lingkungan backend yang aman (misalnya Firebase Cloud Functions).
+        // Jika kamu perlu fungsionalitas ini, kamu harus mengimplementasikan Cloud Function.
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('User berhasil dihapus dari Firestore!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Gagal menghapus user: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isDeleting = false; // Sembunyikan loading
+          });
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -79,30 +149,48 @@ class _UserListPageState extends State<UserListPage> {
                           style: const TextStyle(fontSize: 16),
                         ),
                         const SizedBox(height: 15),
-                        Align(
-                          alignment: Alignment.bottomRight,
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-                              // Navigasi ke halaman edit user
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => EditUserPage(userId: userId, userData: userData),
+                        Row( // Gunakan Row untuk menempatkan tombol bersebelahan
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                // Navigasi ke halaman edit user
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => EditUserPage(userId: userId, userData: userData),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.edit, color: Colors.white),
+                              label: const Text(
+                                'Edit',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.orange, // Warna untuk tombol edit
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
-                              );
-                            },
-                            icon: const Icon(Icons.edit, color: Colors.white),
-                            label: const Text(
-                              'Edit User',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.orange, // Warna untuk tombol edit
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
                               ),
                             ),
-                          ),
+                            const SizedBox(width: 10), // Spasi antara tombol
+                            // Tombol Hapus User
+                            ElevatedButton.icon(
+                              onPressed: _isDeleting ? null : () => _deleteUser(userId, name), // Panggil fungsi delete
+                              icon: const Icon(Icons.delete, color: Colors.white),
+                              label: const Text(
+                                'Hapus',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red, // Warna untuk tombol hapus
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
